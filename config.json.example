@@ -1,0 +1,9 @@
+{
+  "port": 3000,
+  "isDevelopment": true,
+  "shutdownTimeout": 10,
+  "oidc": {
+    "issuer": "http://localhost:8080/realms/mirzaganteng",
+    "clientId": "access-client"
+  }
+}
