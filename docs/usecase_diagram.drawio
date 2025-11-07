@@ -1,0 +1,34 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/26.1.1 Chrome/134.0.6998.205 Electron/35.6.0 Safari/537.36" version="26.1.1">
+  <diagram name="Page-1" id="Pn_3gA5Ma9zBy0q0pmkB">
+    <mxGraphModel dx="1235" dy="728" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="ZeX5t2tAUwyc5o1rXGMo-8" value="" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="90" y="35" width="520" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="ZeX5t2tAUwyc5o1rXGMo-4" value="" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="325" y="75" width="170" height="265" as="geometry" />
+        </mxCell>
+        <mxCell id="ZeX5t2tAUwyc5o1rXGMo-1" value="Unggah Foto&lt;div&gt;KTP &amp;amp; Slip Gaji&lt;/div&gt;" style="ellipse;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="230" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZeX5t2tAUwyc5o1rXGMo-2" value="Autentikasi" style="ellipse;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="130" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZeX5t2tAUwyc5o1rXGMo-6" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;startFill=0;" edge="1" parent="1" source="ZeX5t2tAUwyc5o1rXGMo-3" target="ZeX5t2tAUwyc5o1rXGMo-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZeX5t2tAUwyc5o1rXGMo-7" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;startFill=0;" edge="1" parent="1" source="ZeX5t2tAUwyc5o1rXGMo-3" target="ZeX5t2tAUwyc5o1rXGMo-1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZeX5t2tAUwyc5o1rXGMo-3" value="User" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1" parent="1">
+          <mxGeometry x="200" y="170" width="40" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZeX5t2tAUwyc5o1rXGMo-5" value="ModalRakyat" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="355" y="80" width="110" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
