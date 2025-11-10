@@ -1,4 +1,4 @@
-FROM golang:1.25.0-bookworm AS builder
+FROM golang:1.25.3-bookworm AS builder
 WORKDIR /src
 
 COPY go.mod go.sum .
@@ -16,5 +16,10 @@ WORKDIR /bin
 
 COPY --from=builder --chown=nonroot:nonroot /artifact/program /bin
 USER nonroot
+
+# see https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#labelling-container-images
+LABEL "org.opencontainers.image.source"="https://github.com/mirzahilmi/modalrakyat-secured"
+LABEL "org.opencontainers.image.description"="Case study of secured data in transit and at rest w/ AWS S3 SSE-C"
+LABEL "org.opencontainers.image.licenses"="MIT"
 
 ENTRYPOINT ["/bin/program"]

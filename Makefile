@@ -14,6 +14,14 @@ devstack:
 devstack.rm:
 	docker compose --file ./.dev/compose.yaml --env-file ./.dev/.env down
 
+.PHONY: staging
+staging:
+	docker compose --file ./deploy/compose.yaml --env-file ./deploy/.env up --detach
+
+.PHONY: staging.rm
+staging.rm:
+	docker compose --file ./deploy/compose.yaml --env-file ./deploy/.env down
+
 .PHONY: pair
 pair:
 	@KEY=$$(openssl rand -base64 32); \
