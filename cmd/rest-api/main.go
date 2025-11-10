@@ -60,8 +60,10 @@ func main() {
 							cfg.Oidc.Issuer,
 						),
 						Scopes: map[string]string{
-							"openid":  "openid",
-							"profile": "profile",
+							"openid": "openid",
+						},
+						Extensions: map[string]any{
+							"x-defaultClientId": cfg.Oidc.ClientId,
 						},
 					},
 				},
