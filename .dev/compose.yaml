@@ -1,9 +1,9 @@
 ---
 networks:
-  gofast_dev_private_network:
+  modalrakyat_dev_private_network:
 
 volumes:
-  gofast_dev_postgres_data:
+  modalrakyat_dev_postgres_data:
 
 services:
   postgres:
@@ -13,13 +13,13 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - gofast_dev_postgres_data:/var/lib/postgresql/18/docker
+      - modalrakyat_dev_postgres_data:/var/lib/postgresql/18/docker
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     networks:
-      - gofast_dev_private_network
+      - modalrakyat_dev_private_network
     healthcheck:
       interval: 30s
       retries: 5
@@ -53,4 +53,33 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - gofast_dev_private_network
+      - modalrakyat_dev_private_network
+
+  garage:
+    image: dxflrs/garage:v2.1.0
+    container_name: garage
+    restart: unless-stopped
+    ports:
+      - 3900:3900
+      - 3901:3901
+      - 3902:3902
+      - 3903:3903
+    volumes:
+      - ./garage.toml:/etc/garage.toml
+    networks:
+      - modalrakyat_dev_private_network
+
+  garageui:
+    image: khairul169/garage-webui:latest
+    container_name: garageui
+    restart: unless-stopped
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - ./garagedata:/tmp/data
+    ports:
+      - 3909:3909
+    environment:
+      API_BASE_URL: "http://garage:3903"
+      S3_ENDPOINT_URL: "http://garage:3900"
+    networks:
+      - modalrakyat_dev_private_network
