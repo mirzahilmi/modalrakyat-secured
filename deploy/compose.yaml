@@ -3,36 +3,13 @@ name: modalrakyat
 
 networks:
   modalrakyat_dev_private_network:
+  inbound_gateway_network:
     external: true
 
 volumes:
   modalrakyat_dev_postgres_data:
 
 services:
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARED_TOKEN}
-    command: ["tunnel", "--no-autoupdate", "run"]
-    networks:
-      - modalrakyat_dev_private_network
-
-  traefik:
-    image: traefik:v3.5.4
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - modalrakyat_dev_private_network
-    command:
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=modalrakyat_dev_private_network
-      - --entryPoints.web.address=:80
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
   postgres:
     image: timescale/timescaledb:2.23.0-pg17-oss
     restart: unless-stopped
@@ -75,19 +52,20 @@ services:
         condition: service_healthy
     networks:
       - modalrakyat_dev_private_network
+      - inbound_gateway_network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.keycloak.rule=Host(`keycloak.mrz.my.id`)"
-      - "traefik.http.routers.keycloak.entrypoints=web"
-      - "traefik.http.routers.keycloak.service=keycloak"
-      - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
-      - "traefik.http.routers.keycloak.middlewares=cors-keycloak"
-      - "traefik.http.middlewares.cors-keycloak.headers.accessControlAllowMethods=*"
-      - "traefik.http.middlewares.cors-keycloak.headers.accessControlAllowHeaders=*"
-      - "traefik.http.middlewares.cors-keycloak.headers.accessControlAllowCredentials=true"
-      - "traefik.http.middlewares.cors-keycloak.headers.accessControlAllowOriginList=http://localhost:3000,https://modalrakyat.mrz.my.id"
-      - "traefik.http.middlewares.cors-keycloak.headers.accessControlMaxAge=100"
-      - "traefik.http.middlewares.cors-keycloak.headers.addVaryHeader=true"
+      - "traefik.http.routers.keycloak-modalrakyat.rule=Host(`keycloak.mrz.my.id`)"
+      - "traefik.http.routers.keycloak-modalrakyat.entrypoints=web"
+      - "traefik.http.routers.keycloak-modalrakyat.service=keycloak-modalrakyat"
+      - "traefik.http.services.keycloak-modalrakyat.loadbalancer.server.port=8080"
+      - "traefik.http.routers.keycloak-modalrakyat.middlewares=cors-keycloak-modalrakyat"
+      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlAllowMethods=*"
+      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlAllowHeaders=*"
+      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlAllowCredentials=true"
+      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlAllowOriginList=http://localhost:3000,https://modalrakyat.mrz.my.id"
+      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlMaxAge=100"
+      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.addVaryHeader=true"
 
   backend:
     image: ghcr.io/mirzahilmi/modalrakyat:latest
@@ -97,15 +75,16 @@ services:
       - ../config.json:/tmp/config.json
     networks:
       - modalrakyat_dev_private_network
+      - inbound_gateway_network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`modalrakyat.mrz.my.id`)"
-      - "traefik.http.routers.backend.entrypoints=web"
-      - "traefik.http.routers.backend.service=backend"
-      - "traefik.http.services.backend.loadbalancer.server.port=3000"
-      - "traefik.http.routers.backend.middlewares=cors-backend"
-      - "traefik.http.middlewares.cors-backend.headers.accessControlAllowMethods=*"
-      - "traefik.http.middlewares.cors-backend.headers.accessControlAllowHeaders=*"
-      - "traefik.http.middlewares.cors-backend.headers.accessControlAllowOriginList=https://keycloak.mrz.my.id"
-      - "traefik.http.middlewares.cors-backend.headers.accessControlMaxAge=100"
-      - "traefik.http.middlewares.cors-backend.headers.addVaryHeader=true"
+      - "traefik.http.routers.backend-modalrakyat.rule=Host(`modalrakyat.mrz.my.id`)"
+      - "traefik.http.routers.backend-modalrakyat.entrypoints=web"
+      - "traefik.http.routers.backend-modalrakyat.service=backend-modalrakyat"
+      - "traefik.http.services.backend-modalrakyat.loadbalancer.server.port=3000"
+      - "traefik.http.routers.backend-modalrakyat.middlewares=cors-backend-modalrakyat"
+      - "traefik.http.middlewares.cors-backend-modalrakyat.headers.accessControlAllowMethods=*"
+      - "traefik.http.middlewares.cors-backend-modalrakyat.headers.accessControlAllowHeaders=*"
+      - "traefik.http.middlewares.cors-backend-modalrakyat.headers.accessControlAllowOriginList=https://keycloak.mrz.my.id"
+      - "traefik.http.middlewares.cors-backend-modalrakyat.headers.accessControlMaxAge=100"
+      - "traefik.http.middlewares.cors-backend-modalrakyat.headers.addVaryHeader=true"
