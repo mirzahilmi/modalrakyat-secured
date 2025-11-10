@@ -1,4 +1,6 @@
 ---
+name: modalrakyat
+
 networks:
   modalrakyat_dev_private_network:
     external: true
@@ -9,7 +11,6 @@ volumes:
 services:
   tunnel:
     image: cloudflare/cloudflared:latest
-    container_name: tunnel
     restart: unless-stopped
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARED_TOKEN}
@@ -19,7 +20,6 @@ services:
 
   traefik:
     image: traefik:v3.5.4
-    container_name: traefik
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -38,7 +38,6 @@ services:
 
   postgres:
     image: timescale/timescaledb:2.23.0-pg17-oss
-    container_name: postgres
     restart: unless-stopped
     ports:
       - 5432:5432
@@ -61,7 +60,6 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.4.1
-    container_name: keycloak
     command: start
     restart: unless-stopped
     ports:
@@ -101,7 +99,6 @@ services:
 
   backend:
     image: ghcr.io/mirzahilmi/modalrakyat:latest
-    container_name: backend
     command: ["--log-level=debug", "--config=/tmp/config.json"]
     restart: unless-stopped
     volumes:
