@@ -3,6 +3,7 @@ package constant
 const (
 	OAPI_SECURITY_SCHEME  = "Keycloak"
 	OAPI_TAG_MISC         = "Miscellaneous"
+	OAPI_TAG_KYC          = "Know Your Customer"
 	OAPI_SPEC_UI          = `<!doctypehtml><title>API Reference</title><meta charset=utf-8><meta content="width=device-width,initial-scale=1"name=viewport><body><script data-url=/openapi.json id=api-reference></script><script src=https://cdn.jsdelivr.net/npm/@scalar/api-reference></script>`
 	OAPI_SPEC_DESCRIPTION = `
 Sebuah aplikasi Fintech (misal P2P Lending) "ModalRakyat"

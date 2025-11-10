@@ -13,3 +13,10 @@ devstack:
 .PHONY: devstack.rm
 devstack.rm:
 	docker compose --file ./.dev/compose.yaml --env-file ./.dev/.env down
+
+.PHONY: pair
+pair:
+	@KEY=$$(openssl rand -base64 32); \
+	echo "Secret Key: $$KEY"; \
+	echo "DIGEST: $$( go run ./cmd/keygen/main.go $$KEY )";
+
