@@ -84,7 +84,8 @@ func main() {
 		}
 
 		api = humachi.New(router, oapi)
-		if err := setup(ctx); err != nil {
+		close, err := setup(ctx)
+		if err != nil {
 			log.Fatal().Err(err).Msg("app: failed to setup")
 		}
 
@@ -110,6 +111,9 @@ func main() {
 			defer cancel()
 
 			if err := server.Shutdown(ctx); err != nil {
+				log.Fatal().Err(err).Msg("http: failed to shutdown")
+			}
+			if err := close(); err != nil {
 				log.Fatal().Err(err).Msg("http: failed to shutdown")
 			}
 			log.Info().Msg("http: shut down complete")

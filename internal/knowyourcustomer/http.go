@@ -3,16 +3,24 @@ package knowyourcustomer
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/barasher/go-exiftool"
 	"github.com/danielgtaylor/huma/v2"
+	vaultApi "github.com/hashicorp/vault/api"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/config"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/constant"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/middleware"
@@ -23,6 +31,8 @@ type handler struct {
 	config            config.Config
 	s3client          *s3.Client
 	s3presignedClient *s3.PresignClient
+	exif              *exiftool.Exiftool
+	vault             *vaultApi.Client
 }
 
 func RegisterHandler(
@@ -32,8 +42,10 @@ func RegisterHandler(
 	config config.Config,
 	s3client *s3.Client,
 	s3presignedClient *s3.PresignClient,
+	exif *exiftool.Exiftool,
+	vault *vaultApi.Client,
 ) {
-	h := handler{config, s3client, s3presignedClient}
+	h := handler{config, s3client, s3presignedClient, exif, vault}
 
 	huma.Register(router, huma.Operation{
 		OperationID: "upload-document",
@@ -57,44 +69,118 @@ func RegisterHandler(
 
 }
 
-type file struct {
-	URL     string      `json:"url"`
-	Headers http.Header `json:"headers"`
-}
-
 func (h handler) PostAsset(ctx context.Context, req *struct {
 	RawBody multipart.Form
 }) (*struct {
-	Body []file
+	Body []File
 }, error) {
 	attachments, ok := req.RawBody.File[constant.MULTIPART_KEY_ATTACHMENTS]
 	if !ok {
 		return nil, errors.New("missing attachments in multipart")
 	}
 
-	keyRaw, err := base64.StdEncoding.DecodeString(h.config.SecretKey)
+	path := fmt.Sprintf(
+		"%s/%s",
+		h.config.Vault.TransitBasePath,
+		h.config.Vault.TransitKey,
+	)
+
+	keys := make([]SecretKey, len(attachments))
+	inputs := make([]TransitEncryptRequest, len(keys))
+	for i := range keys {
+		key := make([]byte, 32)
+		if _, err := io.ReadFull(rand.Reader, key); err != nil {
+			return nil, err
+		}
+		keyEncoded := base64.StdEncoding.EncodeToString(key)
+
+		hf := sha256.New()
+		if _, err := hf.Write(key); err != nil {
+			return nil, err
+		}
+		digest := hf.Sum(nil)
+		digestEncoded := base64.StdEncoding.EncodeToString(digest)
+
+		keys[i] = SecretKey{
+			Data:          key,
+			Encoded:       keyEncoded,
+			DigestEncoded: digestEncoded,
+		}
+		inputs[i] = TransitEncryptRequest{Plaintext: keyEncoded}
+	}
+
+	secret, err := h.vault.Logical().WriteWithRequest(ctx,
+		vaultApi.NewLogicalWriteRequest(
+			path,
+			map[string]interface{}{"batch_input": inputs},
+			make(http.Header),
+		),
+	)
 	if err != nil {
 		return nil, err
 	}
-	sum := md5.Sum(keyRaw)
-	digest := base64.StdEncoding.EncodeToString(sum[:])
+	resultsUntyped, ok := secret.Data["batch_results"]
+	if !ok {
+		return nil, errors.New("vault transit secrets engine missing batch_results response field")
+	}
+	results, ok := resultsUntyped.([]interface{})
+	if !ok {
+		return nil, errors.New("body.batch_results is not the correct type")
+	}
+	for i := range results {
+		resultUntyped, ok := results[i].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		untyped, ok := resultUntyped["ciphertext"]
+		if !ok {
+			continue
+		}
+		ciphertext, ok := untyped.(string)
+		if !ok {
+			continue
+		}
+		keys[i].CiphertextEncoded = ciphertext
+	}
 
-	urls := []file{}
-	for _, header := range attachments {
+	urls := []File{}
+	filenames := []string{}
+	for i, header := range attachments {
+		block, err := aes.NewCipher(keys[i].Data)
+		if err != nil {
+			return nil, err
+		}
+		gcm, err := cipher.NewGCM(block)
+		if err != nil {
+			return nil, err
+		}
+
+		nonce := make([]byte, gcm.NonceSize())
+		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+			return nil, err
+		}
+
 		_file, err := header.Open()
 		if err != nil {
 			return nil, err
 		}
 		defer _file.Close()
 
-		_, err = h.s3client.PutObject(ctx, &s3.PutObjectInput{
-			Key:  aws.String(header.Filename),
-			Body: _file,
+		body := new(bytes.Buffer)
+		if _, err := io.Copy(body, _file); err != nil {
+			return nil, err
+		}
+		ciphertext := gcm.Seal(nonce, nonce, body.Bytes(), nil)
+		f := bytes.NewReader(ciphertext)
 
-			Bucket:               aws.String(h.config.S3.DefaultBucket),
-			SSECustomerAlgorithm: aws.String("AES256"),
-			SSECustomerKey:       aws.String(h.config.SecretKey),
-			SSECustomerKeyMD5:    aws.String(digest),
+		_, err = h.s3client.PutObject(ctx, &s3.PutObjectInput{
+			Key:    aws.String(header.Filename),
+			Body:   f,
+			Bucket: aws.String(h.config.S3.DefaultBucket),
+			Metadata: map[string]string{
+				constant.EDEK_HEADER: keys[i].CiphertextEncoded,
+				constant.DEK_DIGEST:  keys[i].DigestEncoded,
+			},
 		})
 		if err != nil {
 			return nil, err
@@ -103,37 +189,31 @@ func (h handler) PostAsset(ctx context.Context, req *struct {
 			log.Error().Err(err).Msg("failed to close file")
 		}
 
-		obj, err := h.s3presignedClient.PresignGetObject(ctx, &s3.GetObjectInput{
-			Bucket:               aws.String(h.config.S3.DefaultBucket),
-			Key:                  aws.String(header.Filename),
-			SSECustomerAlgorithm: aws.String("AES256"),
-			SSECustomerKey:       aws.String(h.config.SecretKey),
-			SSECustomerKeyMD5:    aws.String(digest),
+		obj, err := h.s3presignedClient.PresignHeadObject(ctx, &s3.HeadObjectInput{
+			Bucket: aws.String(h.config.S3.DefaultBucket),
+			Key:    aws.String(header.Filename),
 		}, s3.WithPresignExpires(10*time.Minute))
 
-		urls = append(urls, file{
+		urls = append(urls, File{
 			URL:     obj.URL,
 			Headers: obj.SignedHeader,
 		})
+		filenames = append(filenames, fmt.Sprintf("%s/%s", os.TempDir(), header.Filename))
 	}
+	// metas := h.exif.ExtractMetadata(filenames...)
+	// log.Debug().Any("data", metas).Msg("kasdfkj")
 
-	return &struct{ Body []file }{Body: urls}, nil
+	return &struct{ Body []File }{Body: urls}, nil
 }
 
 func (h handler) DownloadAsset(ctx context.Context, request *struct {
-	Filename             string `path:"filename"`
-	SSECustomerAlgorithm string `header:"X-Amz-Server-Side-Encryption-Customer-Algorithm" required:"true"`
-	SSECustomerKey       string `header:"X-Amz-Server-Side-Encryption-Customer-Key" required:"true"`
-	SSECustomerKeyMD5    string `header:"X-Amz-Server-Side-Encryption-Customer-Key-Md5" required:"true"`
+	Filename string `path:"filename"`
 }) (*struct {
 	Body []byte
 }, error) {
 	obj, err := h.s3client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket:               aws.String(h.config.S3.DefaultBucket),
-		Key:                  aws.String(request.Filename),
-		SSECustomerAlgorithm: aws.String(request.SSECustomerAlgorithm),
-		SSECustomerKey:       aws.String(request.SSECustomerKey),
-		SSECustomerKeyMD5:    aws.String(request.SSECustomerKeyMD5),
+		Bucket: aws.String(h.config.S3.DefaultBucket),
+		Key:    aws.String(request.Filename),
 	})
 	if err != nil {
 		return nil, err
