@@ -58,7 +58,7 @@ func RegisterHandler(
 	}, h.PostAsset)
 
 	huma.Register(router, huma.Operation{
-		OperationID: "upload-document",
+		OperationID: "download-document",
 		Method:      http.MethodGet,
 		Path:        "/assets/{filename}",
 		Summary:     "Download KTP & Slip gaji",
@@ -80,7 +80,7 @@ func (h handler) PostAsset(ctx context.Context, req *struct {
 	}
 
 	path := fmt.Sprintf(
-		"%s/%s",
+		"%s/encrypt/%s",
 		h.config.Vault.TransitBasePath,
 		h.config.Vault.TransitKey,
 	)
@@ -200,8 +200,6 @@ func (h handler) PostAsset(ctx context.Context, req *struct {
 		})
 		filenames = append(filenames, fmt.Sprintf("%s/%s", os.TempDir(), header.Filename))
 	}
-	// metas := h.exif.ExtractMetadata(filenames...)
-	// log.Debug().Any("data", metas).Msg("kasdfkj")
 
 	return &struct{ Body []File }{Body: urls}, nil
 }
@@ -218,8 +216,69 @@ func (h handler) DownloadAsset(ctx context.Context, request *struct {
 	if err != nil {
 		return nil, err
 	}
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(obj.Body)
+	edek, ok := obj.Metadata[constant.EDEK_HEADER]
+	if !ok {
+		return nil, errors.New("missing stored edek in object metadata")
+	}
 
-	return &struct{ Body []byte }{Body: buf.Bytes()}, nil
+	path := fmt.Sprintf(
+		"%s/decrypt/%s",
+		h.config.Vault.TransitBasePath,
+		h.config.Vault.TransitKey,
+	)
+	secret, err := h.vault.Logical().WriteWithRequest(ctx,
+		vaultApi.NewLogicalWriteRequest(
+			path,
+			map[string]interface{}{"ciphertext": edek},
+			make(http.Header),
+		))
+	if err != nil {
+		return nil, err
+	}
+	untyped, ok := secret.Data["plaintext"]
+	if !ok {
+		return nil, errors.New("missing plaintext response from vault")
+	}
+	dekEncoded, ok := untyped.(string)
+	if !ok {
+		return nil, errors.New("stored dek is not a valid string type")
+	}
+	dek, err := base64.StdEncoding.DecodeString(dekEncoded)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := new(bytes.Buffer)
+	if _, err := io.Copy(buf, obj.Body); err != nil {
+		return nil, err
+	}
+	defer obj.Body.Close()
+
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	raw := buf.Bytes()
+	nonceSize := gcm.NonceSize()
+
+	if len(raw) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+
+	nonce := raw[:nonceSize]
+	ciphertext := raw[nonceSize:]
+
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt GCM: %w", err)
+	}
+
+	return &struct{ Body []byte }{Body: plaintext}, nil
+
 }

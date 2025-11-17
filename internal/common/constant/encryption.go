@@ -1,6 +1,6 @@
 package constant
 
 const (
-	EDEK_HEADER = "X-EDEK"
-	DEK_DIGEST  = "X-DEK-DIGEST"
+	EDEK_HEADER = "x-edek"
+	DEK_DIGEST  = "x-dek-digest"
 )
