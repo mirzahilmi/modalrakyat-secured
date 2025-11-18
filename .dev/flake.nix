@@ -33,6 +33,7 @@
           delve
           husky
           gosec
+          goose
         ];
       };
     });
