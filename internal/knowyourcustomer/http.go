@@ -3,8 +3,6 @@ package knowyourcustomer
 import (
 	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -23,6 +21,7 @@ import (
 	vaultApi "github.com/hashicorp/vault/api"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/config"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/constant"
+	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/cryptography"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/middleware"
 	"github.com/rs/zerolog/log"
 )
@@ -146,20 +145,6 @@ func (h handler) PostAsset(ctx context.Context, req *struct {
 	urls := []File{}
 	filenames := []string{}
 	for i, header := range attachments {
-		block, err := aes.NewCipher(keys[i].Data)
-		if err != nil {
-			return nil, err
-		}
-		gcm, err := cipher.NewGCM(block)
-		if err != nil {
-			return nil, err
-		}
-
-		nonce := make([]byte, gcm.NonceSize())
-		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-			return nil, err
-		}
-
 		_file, err := header.Open()
 		if err != nil {
 			return nil, err
@@ -170,7 +155,15 @@ func (h handler) PostAsset(ctx context.Context, req *struct {
 		if _, err := io.Copy(body, _file); err != nil {
 			return nil, err
 		}
-		ciphertext := gcm.Seal(nonce, nonce, body.Bytes(), nil)
+		if err := _file.Close(); err != nil {
+			log.Error().Err(err).Msg("failed to close file")
+		}
+
+		ciphertext, err := cryptography.EncryptAesGcm(keys[i].Data, body.Bytes())
+		if err != nil {
+			return nil, err
+		}
+
 		f := bytes.NewReader(ciphertext)
 
 		_, err = h.s3client.PutObject(ctx, &s3.PutObjectInput{
@@ -254,29 +247,9 @@ func (h handler) DownloadAsset(ctx context.Context, request *struct {
 	}
 	defer obj.Body.Close()
 
-	block, err := aes.NewCipher(dek)
+	plaintext, err := cryptography.DecryptAesGcm(dek, buf.Bytes())
 	if err != nil {
 		return nil, err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	raw := buf.Bytes()
-	nonceSize := gcm.NonceSize()
-
-	if len(raw) < nonceSize {
-		return nil, fmt.Errorf("ciphertext too short")
-	}
-
-	nonce := raw[:nonceSize]
-	ciphertext := raw[nonceSize:]
-
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt GCM: %w", err)
 	}
 
 	return &struct{ Body []byte }{Body: plaintext}, nil
