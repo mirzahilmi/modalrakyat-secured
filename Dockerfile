@@ -14,6 +14,8 @@ RUN \
 FROM cgr.dev/chainguard/wolfi-base:latest
 WORKDIR /bin
 
+RUN apk add exiftool
+
 COPY --from=builder --chown=nonroot:nonroot /artifact/program /bin
 USER nonroot
 
