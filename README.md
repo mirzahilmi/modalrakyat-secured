@@ -21,8 +21,13 @@ di object Implementasikan Enkripsi Sisi Server
 publik), dan hanya bisa diakses oleh layanan internal yang memiliki
 credential khusus.
 
-## Usecase
-![Usecase Diagram](./docs/usecase_diagram.webp)
+## Implementation Details
+
+### KTP and Slip Gaji Store API
+![KTP and Slip Gaji Store API Sequence Diagram](./docs/file_upload_sequence_diagram.webp)
+
+### KTP and Slip Gaji Download API
+![KTP and Slip Gaji Download API Sequence Diagram](./docs/file_download_sequence_diagram.webp)
 
 ## LICENSE
 This project is licensed under the GNU Affero General Public License v3.0

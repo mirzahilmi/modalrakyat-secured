@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor U as User
+    participant A as API
+    participant V as HashiCorp Vault
+    participant S as S3-Compatible Storage
+
+    U->>A: Request for file with filename
+    A->>S: Request for file with filename
+    S-->>A: Response with file and metadata
+    A->>A: Extract EDEK and DEK digest from file metadata
+    A->>V: Call transit secret engine to decrypt DEK using RSA-4096 managed private key
+    V-->>A: Response with DEK
+    A->>A: Checksum DEK with SHA256 digest
+    A->>A: Decrypt file with AES256/GCM
+    A-->>U: Response with downloadable file content
+

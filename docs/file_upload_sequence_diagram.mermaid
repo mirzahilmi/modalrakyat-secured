@@ -1,0 +1,17 @@
+sequenceDiagram
+    actor U as User
+    participant A as API
+    participant V as HashiCorp Vault
+    participant P as PostgreSQL
+    participant S as S3-Compatible Storage
+
+    U->>A: Upload KTP and Slip Gaji
+    A->>A: Generate random 32-bytes DEK with SHA256 digest for each document
+    A->>A: Encrypt KTP and Slip Gaji each with its own DEK using AES256/GCM
+    A->>V: Call transit secret engine to encrypt DEKs using RSA-4096 managed public key
+    V-->>A: Response with EDEKs
+    A->>S: Store encrypted documents each with EDEK and SHA256 digest as metadata
+    A->>A: Extract KTP and Slip Gaji EXIF metadata
+    A->>P: Store files metadata
+    A-->>U: Response filenames for stored documents
+
