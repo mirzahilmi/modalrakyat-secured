@@ -2,71 +2,12 @@
 name: modalrakyat
 
 networks:
-  modalrakyat_dev_private_network:
   inbound_gateway_network:
     external: true
-
-volumes:
-  modalrakyat_dev_postgres_data:
+  global_internal_network:
+    external: true
 
 services:
-  postgres:
-    image: timescale/timescaledb:2.23.0-pg17-oss
-    restart: unless-stopped
-    volumes:
-      - modalrakyat_dev_postgres_data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    networks:
-      - modalrakyat_dev_private_network
-    healthcheck:
-      interval: 30s
-      retries: 5
-      start_period: 20s
-      test:
-        - CMD-SHELL
-        - pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}
-      timeout: 5s
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.4.1
-    command: start
-    restart: unless-stopped
-    environment:
-      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
-      KC_PROXY_HEADERS: xforwarded
-      KC_HOSTNAME_STRICT_BACKCHANNEL: false
-      KC_HTTP_ENABLED: true
-      KC_HOSTNAME_STRICT_HTTPS: false
-      KC_HEALTH_ENABLED: true
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres/${POSTGRES_DB}
-      KC_DB_USERNAME: ${POSTGRES_USER}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - modalrakyat_dev_private_network
-      - inbound_gateway_network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.keycloak-modalrakyat.rule=Host(`keycloak.mrz.my.id`)"
-      - "traefik.http.routers.keycloak-modalrakyat.entrypoints=web"
-      - "traefik.http.routers.keycloak-modalrakyat.service=keycloak-modalrakyat"
-      - "traefik.http.services.keycloak-modalrakyat.loadbalancer.server.port=8080"
-      - "traefik.http.routers.keycloak-modalrakyat.middlewares=cors-keycloak-modalrakyat"
-      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlAllowMethods=*"
-      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlAllowHeaders=*"
-      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlAllowCredentials=true"
-      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlAllowOriginList=http://localhost:3000,https://modalrakyat.mrz.my.id"
-      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.accessControlMaxAge=100"
-      - "traefik.http.middlewares.cors-keycloak-modalrakyat.headers.addVaryHeader=true"
-
   backend:
     image: ghcr.io/mirzahilmi/modalrakyat:latest
     command: ["--log-level=debug", "--config=/tmp/config.json"]
@@ -74,7 +15,7 @@ services:
     volumes:
       - ../config.json:/tmp/config.json
     networks:
-      - modalrakyat_dev_private_network
+      - global_internal_network
       - inbound_gateway_network
     labels:
       - "traefik.enable=true"
@@ -88,32 +29,3 @@ services:
       - "traefik.http.middlewares.cors-backend-modalrakyat.headers.accessControlAllowOriginList=https://keycloak.mrz.my.id"
       - "traefik.http.middlewares.cors-backend-modalrakyat.headers.accessControlMaxAge=100"
       - "traefik.http.middlewares.cors-backend-modalrakyat.headers.addVaryHeader=true"
-
-  garage:
-    image: dxflrs/garage:v2.1.0
-    container_name: garage
-    restart: unless-stopped
-    ports:
-      - 3900:3900
-      - 3901:3901
-      - 3902:3902
-      - 3903:3903
-    volumes:
-      - ./garage.toml:/etc/garage.toml
-    networks:
-      - modalrakyat_dev_private_network
-
-  garageui:
-    image: khairul169/garage-webui:latest
-    container_name: garageui
-    restart: unless-stopped
-    volumes:
-      - ./garage.toml:/etc/garage.toml:ro
-      - ./garagedata:/tmp/data
-    ports:
-      - 3909:3909
-    environment:
-      API_BASE_URL: "http://garage:3903"
-      S3_ENDPOINT_URL: "http://garage:3900"
-    networks:
-      - modalrakyat_dev_private_network
