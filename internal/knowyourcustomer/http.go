@@ -6,23 +6,29 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/barasher/go-exiftool"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/danielgtaylor/huma/v2"
 	vaultApi "github.com/hashicorp/vault/api"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/config"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/constant"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/cryptography"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/middleware"
+	"github.com/oklog/ulid/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -32,6 +38,7 @@ type handler struct {
 	s3presignedClient *s3.PresignClient
 	exif              *exiftool.Exiftool
 	vault             *vaultApi.Client
+	pool              *pgxpool.Pool
 }
 
 func RegisterHandler(
@@ -43,8 +50,9 @@ func RegisterHandler(
 	s3presignedClient *s3.PresignClient,
 	exif *exiftool.Exiftool,
 	vault *vaultApi.Client,
+	pool *pgxpool.Pool,
 ) {
-	h := handler{config, s3client, s3presignedClient, exif, vault}
+	h := handler{config, s3client, s3presignedClient, exif, vault, pool}
 
 	huma.Register(router, huma.Operation{
 		OperationID: "upload-document",
@@ -71,7 +79,7 @@ func RegisterHandler(
 func (h handler) PostAsset(ctx context.Context, req *struct {
 	RawBody multipart.Form
 }) (*struct {
-	Body []File
+	Body []string
 }, error) {
 	attachments, ok := req.RawBody.File[constant.MULTIPART_KEY_ATTACHMENTS]
 	if !ok {
@@ -142,8 +150,8 @@ func (h handler) PostAsset(ctx context.Context, req *struct {
 		keys[i].CiphertextEncoded = ciphertext
 	}
 
-	urls := []File{}
-	filenames := []string{}
+	filenames := make([]string, len(attachments))
+	files := make([]File, len(attachments))
 	for i, header := range attachments {
 		_file, err := header.Open()
 		if err != nil {
@@ -156,7 +164,7 @@ func (h handler) PostAsset(ctx context.Context, req *struct {
 			return nil, err
 		}
 		if err := _file.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close file")
+			log.Warn().Err(err).Msg("failed to close file")
 		}
 
 		ciphertext, err := cryptography.EncryptAesGcm(keys[i].Data, body.Bytes())
@@ -172,29 +180,65 @@ func (h handler) PostAsset(ctx context.Context, req *struct {
 			Bucket: aws.String(h.config.S3.DefaultBucket),
 			Metadata: map[string]string{
 				constant.EDEK_HEADER: keys[i].CiphertextEncoded,
-				constant.DEK_DIGEST:  keys[i].DigestEncoded,
-			},
+				constant.DEK_DIGEST:  keys[i].DigestEncoded},
 		})
 		if err != nil {
 			return nil, err
 		}
-		if err := _file.Close(); err != nil {
-			log.Error().Err(err).Msg("failed to close file")
+
+		filenames[i] = header.Filename
+
+		tmpFilename := fmt.Sprintf("modalrakyat-%s", header.Filename)
+		tmpFilepath := filepath.Join(os.TempDir(), tmpFilename)
+		if err := os.WriteFile(tmpFilepath, body.Bytes(), 0644); err != nil {
+			return nil, err
+		}
+		defer os.Remove(tmpFilepath)
+
+		exif := h.exif.ExtractMetadata(tmpFilepath)
+		os.Remove(tmpFilepath)
+
+		if len(exif) < 1 {
+			return nil, errors.New("empty exif metadata")
+		}
+		jsonMetas, err := json.Marshal(exif[0].Fields)
+		if err != nil {
+			return nil, err
 		}
 
-		obj, err := h.s3presignedClient.PresignHeadObject(ctx, &s3.HeadObjectInput{
-			Bucket: aws.String(h.config.S3.DefaultBucket),
-			Key:    aws.String(header.Filename),
-		}, s3.WithPresignExpires(10*time.Minute))
-
-		urls = append(urls, File{
-			URL:     obj.URL,
-			Headers: obj.SignedHeader,
-		})
-		filenames = append(filenames, fmt.Sprintf("%s/%s", os.TempDir(), header.Filename))
+		files[i] = File{
+			Filename: header.Filename,
+			Metadata: jsonMetas,
+		}
 	}
 
-	return &struct{ Body []File }{Body: urls}, nil
+	principalToken, ok := ctx.Value(constant.CONTEXT_KEY_PRINCIPAL).(*oidc.IDToken)
+	if !ok {
+		log.Warn().Msg("missing principal token in context, skipping db insertion")
+		return &struct{ Body []string }{Body: filenames}, nil
+	}
+
+	rows := make([][]interface{}, len(files))
+	for i, file := range files {
+		row := rows[i]
+		row = append(row, ulid.Make().String())
+		row = append(row, file.Filename)
+		row = append(row, file.Metadata)
+		row = append(row, principalToken.Subject)
+		row = append(row, time.Now())
+		rows[i] = row
+	}
+
+	if _, err := h.pool.CopyFrom(
+		ctx,
+		pgx.Identifier{constant.TABLE_DOCUMENTS},
+		[]string{"id", "filename", "metadata", "created_by", "created_at"},
+		pgx.CopyFromRows(rows),
+	); err != nil {
+		return nil, err
+	}
+
+	return &struct{ Body []string }{Body: filenames}, nil
 }
 
 func (h handler) DownloadAsset(ctx context.Context, request *struct {

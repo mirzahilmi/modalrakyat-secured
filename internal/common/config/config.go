@@ -7,6 +7,7 @@ type Config struct {
 	Oidc            Oidc
 	S3              S3
 	Vault           Vault
+	PostgreSQL      PostgreSQL
 }
 
 type Oidc struct {
@@ -27,4 +28,8 @@ type Vault struct {
 	Token           string
 	TransitBasePath string
 	TransitKey      string
+}
+
+type PostgreSQL struct {
+	ConnectionURL string
 }

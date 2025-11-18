@@ -1,10 +1,10 @@
 package knowyourcustomer
 
-import "net/http"
+import "encoding/json"
 
 type File struct {
-	URL     string      `json:"url"`
-	Headers http.Header `json:"headers"`
+	Filename string
+	Metadata json.RawMessage
 }
 
 type TransitEncryptRequest struct {

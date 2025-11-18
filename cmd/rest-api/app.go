@@ -2,15 +2,18 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/barasher/go-exiftool"
 	vaultApi "github.com/hashicorp/vault/api"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/common/middleware"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/knowyourcustomer"
 	"github.com/mirzahilmi/modalrakyat-hardened/internal/utility"
+	"github.com/rs/zerolog/log"
 )
 
 func setup(ctx context.Context) (func() error, error) {
@@ -40,7 +43,6 @@ func setup(ctx context.Context) (func() error, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer exif.Close()
 
 	vaultConfig := vaultApi.DefaultConfig()
 	vaultConfig.Address = cfg.Vault.URL
@@ -49,6 +51,16 @@ func setup(ctx context.Context) (func() error, error) {
 		return nil, err
 	}
 	vault.SetToken(cfg.Vault.Token)
+
+	pgxConfig, err := pgxpool.ParseConfig(cfg.PostgreSQL.ConnectionURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg(fmt.Sprintf("timescaledb: failed to parse dsn uri %s", cfg.PostgreSQL.ConnectionURL))
+	}
+	// pgxConfig.ConnConfig.Tracer = pgxlogger.NewTraceLogger()
+	pool, err := pgxpool.NewWithConfig(ctx, pgxConfig)
+	if err != nil {
+		log.Fatal().Err(err).Msg(fmt.Sprintf("timescaledb: cannot start connection with %s", cfg.PostgreSQL.ConnectionURL))
+	}
 
 	middleware := middleware.NewMiddleware(api, cfg)
 
@@ -62,6 +74,7 @@ func setup(ctx context.Context) (func() error, error) {
 		s3presignedClient,
 		exif,
 		vault,
+		pool,
 	)
 
 	return func() error {
