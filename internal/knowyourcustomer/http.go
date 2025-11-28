@@ -32,6 +32,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var pngMagicBytes = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+
 type handler struct {
 	config            config.Config
 	s3client          *s3.Client
@@ -160,11 +162,19 @@ func (h handler) PostAsset(ctx context.Context, req *struct {
 		defer _file.Close()
 
 		body := new(bytes.Buffer)
-		if _, err := io.Copy(body, _file); err != nil {
+		written, err := io.Copy(body, _file)
+		if err != nil {
 			return nil, err
 		}
 		if err := _file.Close(); err != nil {
 			log.Warn().Err(err).Msg("failed to close file")
+		}
+
+		if written < 8 {
+			return nil, errors.New("invalid file")
+		}
+		if !bytes.Equal(body.Bytes()[:8], pngMagicBytes) {
+			return nil, errors.New("invalid file bytes signature")
 		}
 
 		ciphertext, err := cryptography.EncryptAesGcm(keys[i].Data, body.Bytes())
